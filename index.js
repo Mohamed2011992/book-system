@@ -4,13 +4,21 @@ const mongoose = require("mongoose");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// حالة الاتصال بـ MongoDB
+let isMongoConnected = false;
+
 // الاتصال بـ MongoDB
 mongoose.connect(process.env.MONGO_URL, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
-.then(() => console.log("MongoDB Connected ✅"))
-.catch((err) => console.log("MongoDB Error ❌", err));
+.then(() => {
+  console.log("MongoDB Connected ✅");
+  isMongoConnected = true;
+})
+.catch((err) => {
+  console.log("MongoDB Error ❌", err);
+});
 
 // Schema
 const tokenSchema = new mongoose.Schema({
@@ -32,12 +40,14 @@ app.get("/", (req, res) => {
   res.send("Server is running 🚀");
 });
 
-// توليد لينك تحميل
+// توليد لينك
 app.get("/generate", async (req, res) => {
   try {
     const token = Math.random().toString(36).substring(2);
 
-    await Token.create({ token });
+    if (isMongoConnected) {
+      await Token.create({ token });
+    }
 
     const link = `https://${req.headers.host}/download?token=${token}`;
 
@@ -48,7 +58,7 @@ app.get("/generate", async (req, res) => {
 
   } catch (err) {
     console.log(err);
-    res.status(500).send("Error generating link");
+    res.status(500).send("Error generating link ❌");
   }
 });
 
@@ -61,28 +71,30 @@ app.get("/download", async (req, res) => {
       return res.send("Token missing ❌");
     }
 
-    const record = await Token.findOne({ token });
+    if (isMongoConnected) {
+      const record = await Token.findOne({ token });
 
-    if (!record) {
-      return res.send("Invalid token ❌");
+      if (!record) {
+        return res.send("Invalid token ❌");
+      }
+
+      if (record.used) {
+        return res.send("Token already used ❌");
+      }
+
+      // تحديث الحالة
+      record.used = true;
+      await record.save();
     }
 
-    if (record.used) {
-      return res.send("Token already used ❌");
-    }
-
-    // تحديث الحالة
-    record.used = true;
-    await record.save();
-
-    // لينك التحميل
+    // لينك تحميل مباشر
     const fileUrl = "https://drive.google.com/uc?export=download&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
 
-    return res.redirect(fileUrl);
+    res.redirect(fileUrl);
 
   } catch (err) {
     console.log(err);
-    res.status(500).send("Server error");
+    res.status(500).send("Server error ❌");
   }
 });
 
