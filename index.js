@@ -1,22 +1,41 @@
 const express = require("express");
-const app = express();
+const mongoose = require("mongoose");
 
+const app = express();
 const PORT = process.env.PORT || 3000;
 
-// تخزين التوكنات (مؤقت في الذاكرة)
-const tokens = {};
+// الاتصال بـ MongoDB
+mongoose.connect(process.env.MONGO_URL)
+.then(() => console.log("MongoDB Connected ✅"))
+.catch(err => console.log("MongoDB Error ❌", err));
 
-// الصفحة الرئيسية
+// Schema
+const tokenSchema = new mongoose.Schema({
+  token: String,
+  used: {
+    type: Boolean,
+    default: false
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+const Token = mongoose.model("Token", tokenSchema);
+
+// Routes
+
+// Home
 app.get("/", (req, res) => {
   res.send("Server is running 🚀");
 });
 
-// توليد لينك تحميل
-app.get("/generate", (req, res) => {
+// Generate token
+app.get("/generate", async (req, res) => {
   const token = Math.random().toString(36).substring(2);
 
-  // حفظ التوكن
-  tokens[token] = true;
+  await Token.create({ token });
 
   const link = `https://${req.headers.host}/download?token=${token}`;
 
@@ -26,26 +45,35 @@ app.get("/generate", (req, res) => {
   });
 });
 
-// تحميل الملف
-app.get("/download", (req, res) => {
+// Download route
+app.get("/download", async (req, res) => {
   const token = req.query.token;
 
-  // التحقق من التوكن
-  if (!token || !tokens[token]) {
-    return res.send("Invalid or expired token ❌");
+  if (!token) {
+    return res.send("Token missing ❌");
   }
 
-  // حذف التوكن بعد الاستخدام (تحميل مرة واحدة)
-  delete tokens[token];
+  const record = await Token.findOne({ token });
 
-  // لينك Google Drive direct
+  if (!record) {
+    return res.send("Invalid token ❌");
+  }
+
+  if (record.used) {
+    return res.send("Token already used ❌");
+  }
+
+  // Mark as used
+  record.used = true;
+  await record.save();
+
+  // Google Drive direct link
   const fileUrl = "https://drive.google.com/uc?export=download&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
 
-  // تحويل مباشر للتحميل
   res.redirect(fileUrl);
 });
 
-// تشغيل السيرفر
+// Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
