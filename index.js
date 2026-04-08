@@ -93,8 +93,8 @@ app.get("/download", async (req, res) => {
             return res.status(403).send("❌ Link invalid or already used.");
         }
 
-        const fileUrl = "https://drive.google.com/uc?export=download&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
-
+const fileUrl = "https://drive.google.com/uc?export=download&confirm=t&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
+        
         res.setHeader("Referrer-Policy", "no-referrer");
         return res.redirect(fileUrl);
 
