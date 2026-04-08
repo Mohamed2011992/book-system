@@ -1,66 +1,46 @@
-// تشغيل السيرفر فوراً حتى لا يظن Railway أن التطبيق تعطل
+const express = require("express");
+const { MongoClient } = require("mongodb");
+const crypto = require("crypto");
+
+// 1. تهيئة التطبيق أولاً (لتجنب خطأ ReferenceError)
+const app = express();
+app.use(express.json());
+
+// 2. إعدادات البيئة
+const MONGO_URI = process.env.MONGO_URI;
+const PORT = process.env.PORT || 3000;
+
+// 3. تشغيل السيرفر فوراً ليراه Railway ويتجنب إغلاقه (Crash)
 app.listen(PORT, () => {
   console.log(`🚀 Server listening on port ${PORT}`);
   
-  // الآن ابدأ الاتصال بقاعدة البيانات في الخلفية
+  // استدعاء الاتصال بقاعدة البيانات بعد أن يعمل السيرفر
   connectDB();
 });
+
+// ======================
+// 🔗 إعدادات MongoDB
+// ======================
+const client = new MongoClient(MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 5000,
+});
+
+let db;
 
 async function connectDB() {
   try {
     await client.connect();
     db = client.db("bookSystem");
-    console.log("✅ MongoDB Connected");
-  } catch (err) {
-    console.error("❌ MongoDB Connection Error:", err);
-    // لا تغلق السيرفر هنا، فقط اطبع الخطأ
-  }
-}
-const express = require("express");
-const { MongoClient } = require("mongodb");
-const crypto = require("crypto");
-
-const app = express();
-app.use(express.json());
-
-// ======================
-// 🔗 إعدادات MongoDB و Railway
-// ======================
-
-const MONGO_URI = process.env.MONGO_URI;
-const PORT = process.env.PORT || 3000;
-
-// إعداد العميل مع خيارات الاستقرار
-const client = new MongoClient(MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 5000, // المحاولة لمدة 5 ثواني قبل الفشل
-  socketTimeoutMS: 45000,
-});
-
-let db;
-
-async function startServer() {
-  try {
-    console.log("⏳ Connecting to MongoDB...");
-    await client.connect();
-    db = client.db("bookSystem");
     
-    // إنشاء كشافات (Indexes) لضمان السرعة ومنع التكرار
+    // إنشاء كشافات (Indexes) لضمان السرعة وحذف اللينكات بعد 24 ساعة
     await db.collection("links").createIndex({ "token": 1 });
-    // حذف اللينكات تلقائياً بعد 24 ساعة لتوفير المساحة
     await db.collection("links").createIndex({ "createdAt": 1 }, { expireAfterSeconds: 86400 });
 
     console.log("✅ MongoDB Connected Successfully");
-
-    // تشغيل السيرفر فقط بعد نجاح الاتصال بقاعدة البيانات
-    app.listen(PORT, () => {
-      console.log(`🚀 Server is running on port ${PORT}`);
-    });
   } catch (err) {
-    console.error("❌ Failed to connect to MongoDB:", err);
-    // إعادة التشغيل التلقائي من قبل Railway في حال الفشل
-    process.exit(1); 
+    console.error("❌ MongoDB Connection Error:", err);
   }
 }
 
@@ -100,7 +80,7 @@ app.post("/generate", async (req, res) => {
 });
 
 // ======================
-// 📥 مسار التحميل (Atomic One-Time Use)
+// 📥 مسار التحميل (للاستخدام مرة واحدة فقط)
 // ======================
 
 app.get("/download", async (req, res) => {
@@ -111,15 +91,14 @@ app.get("/download", async (req, res) => {
       return res.status(400).send("❌ No token provided");
     }
 
-    // استخدام findOneAndUpdate لضمان أن العملية تتم مرة واحدة فقط (Atomic)
-    // هذا يمنع الـ Crash والـ Race Condition
+    // تحديث والتحقق في نفس الوقت لمنع الاستخدام المتكرر (Race Condition)
     const result = await db.collection("links").findOneAndUpdate(
       { token: token, used: false },
       { $set: { used: true, usedAt: new Date() } },
       { returnDocument: "after" }
     );
 
-    // إذا لم يجد التوكن أو كان مستخدماً مسبقاً
+    // إذا لم يجد التوكن أو كان مستخدماً من قبل
     if (!result) {
       return res.status(403).send("❌ This link is invalid or has already been used.");
     }
@@ -127,7 +106,7 @@ app.get("/download", async (req, res) => {
     // رابط Google Drive المباشر
     const fileUrl = "https://drive.google.com/uc?export=download&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
 
-    // منع تسريب التوكن في الـ Headers عند التحويل لـ Google
+    // منع تسريب التوكن عند التحويل لجوجل
     res.setHeader("Referrer-Policy", "no-referrer");
     return res.redirect(fileUrl);
 
@@ -138,13 +117,9 @@ app.get("/download", async (req, res) => {
 });
 
 // ======================
-// 🛡️ حماية السيرفر من الانهيار المفاجئ
+// 🛡️ حماية السيرفر من الانهيار
 // ======================
 
-// التعامل مع أي أخطاء غير متوقعة في الوعود (Promises) دون توقف السيرفر
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
-
-// بدء التشغيل
-startServer();
