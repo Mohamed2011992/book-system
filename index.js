@@ -104,8 +104,8 @@ app.get("/download", async (req, res) => {
     }
 
     // رابط Google Drive المباشر
-    const fileUrl = "https://drive.google.com/uc?export=download&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
-
+const fileUrl = "https://drive.google.com/uc?export=download&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
+    
     // منع تسريب التوكن عند التحويل لجوجل
     res.setHeader("Referrer-Policy", "no-referrer");
     return res.redirect(fileUrl);
