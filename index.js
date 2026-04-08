@@ -1,104 +1,105 @@
 const express = require("express");
-const mongoose = require("mongoose");
+const { MongoClient } = require("mongodb");
+const crypto = require("crypto");
 
 const app = express();
+app.use(express.json());
+
 const PORT = process.env.PORT || 3000;
+const MONGO_URI = process.env.MONGO_URI;
 
-// حالة الاتصال بـ MongoDB
-let isMongoConnected = false;
+let db;
+let client;
 
-// الاتصال بـ MongoDB
-mongoose.connect(process.env.MONGO_URL, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => {
-  console.log("MongoDB Connected ✅");
-  isMongoConnected = true;
-})
-.catch((err) => {
-  console.log("MongoDB Error ❌", err);
-});
+if (MONGO_URI) {
+    client = new MongoClient(MONGO_URI);
+}
 
-// Schema
-const tokenSchema = new mongoose.Schema({
-  token: String,
-  used: {
-    type: Boolean,
-    default: false
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  }
-});
-
-const Token = mongoose.model("Token", tokenSchema);
-
-// الصفحة الرئيسية
-app.get("/", (req, res) => {
-  res.send("Server is running 🚀");
-});
-
-// توليد لينك
-app.get("/generate", async (req, res) => {
-  try {
-    const token = Math.random().toString(36).substring(2);
-
-    if (isMongoConnected) {
-      await Token.create({ token });
+// الاتصال بقاعدة البيانات
+async function connectDB() {
+    try {
+        if (!client) {
+            console.error("❌ MONGO_URI is missing in Railway variables!");
+            return;
+        }
+        await client.connect();
+        db = client.db("bookSystem");
+        console.log("✅ MongoDB Connected Successfully");
+    } catch (err) {
+        console.error("❌ MongoDB Connection Error:", err);
     }
-
-    const link = `https://${req.headers.host}/download?token=${token}`;
-
-    res.json({
-      message: "Link generated successfully",
-      link: link
-    });
-
-  } catch (err) {
-    console.log(err);
-    res.status(500).send("Error generating link ❌");
-  }
-});
-
-// تحميل الملف
-app.get("/download", async (req, res) => {
-  try {
-    const token = req.query.token;
-
-    if (!token) {
-      return res.send("Token missing ❌");
-    }
-
-    if (isMongoConnected) {
-      const record = await Token.findOne({ token });
-
-      if (!record) {
-        return res.send("Invalid token ❌");
-      }
-
-      if (record.used) {
-        return res.send("Token already used ❌");
-      }
-
-      // تحديث الحالة
-      record.used = true;
-      await record.save();
-    }
-
-    // لينك تحميل مباشر
-    const fileUrl = "https://drive.google.com/uc?export=download&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
-
-    res.redirect(fileUrl);
-
-  } catch (err) {
-    console.log(err);
-    res.status(500).send("Server error ❌");
-  }
-});
+}
 
 // تشغيل السيرفر
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
+    connectDB();
+});
+
+
+// 🟢 الصفحة الرئيسية (حل مشكلة Cannot GET)
+app.get("/", (req, res) => {
+    res.send("Server is running 🚀");
+});
+
+
+// 🟢 إنشاء لينك (GET بدل POST للاختبار)
+app.get("/generate", async (req, res) => {
+    try {
+        if (!db) return res.status(500).send("Database not ready");
+
+        const token = crypto.randomBytes(20).toString("hex");
+
+        await db.collection("links").insertOne({
+            token,
+            used: false,
+            createdAt: new Date()
+        });
+
+        const host = req.get("host");
+        const protocol = req.headers["x-forwarded-proto"] || "http";
+
+        res.json({
+            link: `${protocol}://${host}/download?token=${token}`
+        });
+
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ error: "Server Error" });
+    }
+});
+
+
+// 🟢 تحميل الملف (مرة واحدة)
+app.get("/download", async (req, res) => {
+    try {
+        if (!db) return res.status(500).send("Database not ready");
+
+        const { token } = req.query;
+
+        if (!token) {
+            return res.status(400).send("❌ Token missing");
+        }
+
+        // البحث والتحديث في خطوة واحدة
+        const result = await db.collection("links").findOneAndUpdate(
+            { token: token, used: false },
+            { $set: { used: true } },
+            { returnDocument: "after" }
+        );
+
+        // 🔥 التصحيح هنا
+        if (!result.value) {
+            return res.status(403).send("❌ Link invalid or already used.");
+        }
+
+        const fileUrl = "https://drive.google.com/uc?export=download&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
+
+        res.setHeader("Referrer-Policy", "no-referrer");
+        return res.redirect(fileUrl);
+
+    } catch (err) {
+        console.log(err);
+        res.status(500).send("Internal Server Error ❌");
+    }
 });
