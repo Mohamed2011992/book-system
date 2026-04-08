@@ -1,53 +1,107 @@
 const express = require("express");
+const { MongoClient } = require("mongodb");
+const crypto = require("crypto");
+
 const app = express();
+app.use(express.json());
 
-let links = {};
+// ======================
+// 🔗 MongoDB Connection
+// ======================
 
-// الصفحة الرئيسية
-app.get("/", (req, res) => {
-  res.send(`
-    <h2>📘 نظام بيع الكتاب</h2>
-    <button onclick="generate()">Generate Link</button>
-    <p id="link"></p>
+const MONGO_URI = process.env.MONGO_URI;
 
-    <script>
-      function generate() {
-        fetch('/generate')
-          .then(res => res.json())
-          .then(data => {
-            document.getElementById('link').innerText = data.link;
-          });
-      }
-    </script>
-  `);
+const client = new MongoClient(MONGO_URI);
+
+let db;
+
+async function connectDB() {
+  try {
+    await client.connect();
+    db = client.db("bookSystem");
+    console.log("✅ MongoDB Connected");
+  } catch (err) {
+    console.log("❌ MongoDB Error:", err);
+  }
+}
+
+connectDB();
+
+// ======================
+// 🔐 Generate Token
+// ======================
+
+function generateToken() {
+  return crypto.randomBytes(20).toString("hex");
+}
+
+// ======================
+// 🎯 Create Download Link
+// ======================
+
+app.post("/generate", async (req, res) => {
+  try {
+    const token = generateToken();
+
+    await db.collection("links").insertOne({
+      token,
+      used: false,
+      createdAt: new Date()
+    });
+
+    res.json({
+      message: "✅ Link created",
+      link: `https://${req.headers.host}/download?token=${token}`
+    });
+  } catch (err) {
+    res.status(500).json({ error: "❌ Error creating link" });
+  }
 });
 
-// توليد لينك
-app.get("/generate", (req, res) => {
-  const id = Math.random().toString(36).substring(2, 10);
+// ======================
+// 📥 Download Route (One-Time)
+// ======================
 
-  links[id] = {
-    used: false,
-    expires: Date.now() + 10 * 60 * 1000
-  };
+app.get("/download", async (req, res) => {
+  try {
+    const token = req.query.token;
 
-  const link = req.protocol + "://" + req.get("host") + "/download/" + id;
+    if (!token) {
+      return res.send("❌ No token provided");
+    }
 
-  res.json({ link });
+    const record = await db.collection("links").findOne({ token });
+
+    if (!record) {
+      return res.send("❌ Invalid link");
+    }
+
+    if (record.used) {
+      return res.send("❌ Link already used");
+    }
+
+    // قفل اللينك بعد الاستخدام
+    await db.collection("links").updateOne(
+      { token },
+      { $set: { used: true } }
+    );
+
+    // 🔗 تحويل لينك Google Drive إلى تحميل مباشر
+    const fileUrl = "https://drive.google.com/uc?export=download&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
+
+    return res.redirect(fileUrl);
+
+  } catch (err) {
+    res.status(500).send("❌ Server error");
+  }
 });
 
-// التحميل
-app.get("/download/:id", (req, res) => {
-  const data = links[req.params.id];
+// ======================
+// 🚀 Start Server
+// ======================
 
-  if (!data) return res.send("❌ لينك غير صالح");
-  if (data.used) return res.send("❌ تم استخدام اللينك");
-  if (Date.now() > data.expires)
-    return res.send("⏳ انتهت الصلاحية");
+const PORT = process.env.PORT || 3000;
 
-  data.used = true;
-
-  res.send("✅ تمام! هنا المفروض يتحمل الكتاب (هنظبطها كمان خطوة)");
+app.listen(PORT, () => {
+  console.log("🚀 Server running on port " + PORT);
 });
-
-app.listen(3000, () => console.log("Server running"));
