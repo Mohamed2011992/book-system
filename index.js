@@ -6,37 +6,56 @@ const app = express();
 app.use(express.json());
 
 // ======================
-// 🔗 MongoDB Connection
+// 🔗 إعدادات MongoDB و Railway
 // ======================
 
 const MONGO_URI = process.env.MONGO_URI;
+const PORT = process.env.PORT || 3000;
 
-const client = new MongoClient(MONGO_URI);
+// إعداد العميل مع خيارات الاستقرار
+const client = new MongoClient(MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 5000, // المحاولة لمدة 5 ثواني قبل الفشل
+  socketTimeoutMS: 45000,
+});
 
 let db;
 
-async function connectDB() {
+async function startServer() {
   try {
+    console.log("⏳ Connecting to MongoDB...");
     await client.connect();
     db = client.db("bookSystem");
-    console.log("✅ MongoDB Connected");
+    
+    // إنشاء كشافات (Indexes) لضمان السرعة ومنع التكرار
+    await db.collection("links").createIndex({ "token": 1 });
+    // حذف اللينكات تلقائياً بعد 24 ساعة لتوفير المساحة
+    await db.collection("links").createIndex({ "createdAt": 1 }, { expireAfterSeconds: 86400 });
+
+    console.log("✅ MongoDB Connected Successfully");
+
+    // تشغيل السيرفر فقط بعد نجاح الاتصال بقاعدة البيانات
+    app.listen(PORT, () => {
+      console.log(`🚀 Server is running on port ${PORT}`);
+    });
   } catch (err) {
-    console.log("❌ MongoDB Error:", err);
+    console.error("❌ Failed to connect to MongoDB:", err);
+    // إعادة التشغيل التلقائي من قبل Railway في حال الفشل
+    process.exit(1); 
   }
 }
 
-connectDB();
-
 // ======================
-// 🔐 Generate Token
+// 🔐 توليد التوكن
 // ======================
 
 function generateToken() {
-  return crypto.randomBytes(20).toString("hex");
+  return crypto.randomBytes(32).toString("hex");
 }
 
 // ======================
-// 🎯 Create Download Link
+// 🎯 إنشاء رابط التحميل
 // ======================
 
 app.post("/generate", async (req, res) => {
@@ -49,59 +68,65 @@ app.post("/generate", async (req, res) => {
       createdAt: new Date()
     });
 
+    const protocol = req.headers['x-forwarded-proto'] || 'http';
+    const host = req.headers.host;
+
     res.json({
-      message: "✅ Link created",
-      link: `https://${req.headers.host}/download?token=${token}`
+      message: "✅ Link created (Valid for 24 hours)",
+      link: `${protocol}://${host}/download?token=${token}`
     });
   } catch (err) {
+    console.error("Error creating link:", err);
     res.status(500).json({ error: "❌ Error creating link" });
   }
 });
 
 // ======================
-// 📥 Download Route (One-Time)
+// 📥 مسار التحميل (Atomic One-Time Use)
 // ======================
 
 app.get("/download", async (req, res) => {
   try {
-    const token = req.query.token;
+    const { token } = req.query;
 
     if (!token) {
-      return res.send("❌ No token provided");
+      return res.status(400).send("❌ No token provided");
     }
 
-    const record = await db.collection("links").findOne({ token });
-
-    if (!record) {
-      return res.send("❌ Invalid link");
-    }
-
-    if (record.used) {
-      return res.send("❌ Link already used");
-    }
-
-    // قفل اللينك بعد الاستخدام
-    await db.collection("links").updateOne(
-      { token },
-      { $set: { used: true } }
+    // استخدام findOneAndUpdate لضمان أن العملية تتم مرة واحدة فقط (Atomic)
+    // هذا يمنع الـ Crash والـ Race Condition
+    const result = await db.collection("links").findOneAndUpdate(
+      { token: token, used: false },
+      { $set: { used: true, usedAt: new Date() } },
+      { returnDocument: "after" }
     );
 
-    // 🔗 تحويل لينك Google Drive إلى تحميل مباشر
+    // إذا لم يجد التوكن أو كان مستخدماً مسبقاً
+    if (!result) {
+      return res.status(403).send("❌ This link is invalid or has already been used.");
+    }
+
+    // رابط Google Drive المباشر
     const fileUrl = "https://drive.google.com/uc?export=download&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
 
+    // منع تسريب التوكن في الـ Headers عند التحويل لـ Google
+    res.setHeader("Referrer-Policy", "no-referrer");
     return res.redirect(fileUrl);
 
   } catch (err) {
-    res.status(500).send("❌ Server error");
+    console.error("Download error:", err);
+    res.status(500).send("❌ Internal Server Error");
   }
 });
 
 // ======================
-// 🚀 Start Server
+// 🛡️ حماية السيرفر من الانهيار المفاجئ
 // ======================
 
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log("🚀 Server running on port " + PORT);
+// التعامل مع أي أخطاء غير متوقعة في الوعود (Promises) دون توقف السيرفر
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
+
+// بدء التشغيل
+startServer();
