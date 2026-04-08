@@ -5,11 +5,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // الاتصال بـ MongoDB
+// تأكد إنك عامل Environment Variable باسم MONGO_URL
 mongoose.connect(process.env.MONGO_URL)
-.then(() => console.log("MongoDB Connected ✅"))
-.catch(err => console.log("MongoDB Error ❌", err));
+  .then(() => console.log("MongoDB Connected ✅"))
+  .catch(err => console.log("MongoDB Connection Error ❌", err));
 
-// Schema
+// Schema لتخزين التوكنات
 const tokenSchema = new mongoose.Schema({
   token: String,
   used: {
@@ -24,14 +25,12 @@ const tokenSchema = new mongoose.Schema({
 
 const Token = mongoose.model("Token", tokenSchema);
 
-// Routes
-
-// Home
+// الصفحة الرئيسية
 app.get("/", (req, res) => {
   res.send("Server is running 🚀");
 });
 
-// Generate token
+// توليد لينك تحميل
 app.get("/generate", async (req, res) => {
   const token = Math.random().toString(36).substring(2);
 
@@ -45,7 +44,7 @@ app.get("/generate", async (req, res) => {
   });
 });
 
-// Download route
+// لينك التحميل
 app.get("/download", async (req, res) => {
   const token = req.query.token;
 
@@ -63,17 +62,17 @@ app.get("/download", async (req, res) => {
     return res.send("Token already used ❌");
   }
 
-  // Mark as used
+  // تعليم التوكن على انه مستخدم
   record.used = true;
   await record.save();
 
-  // Google Drive direct link
+  // لينك Google Drive direct
   const fileUrl = "https://drive.google.com/uc?export=download&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
 
   res.redirect(fileUrl);
 });
 
-// Start server
+// تشغيل السيرفر
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
