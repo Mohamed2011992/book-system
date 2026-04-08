@@ -1,3 +1,21 @@
+// تشغيل السيرفر فوراً حتى لا يظن Railway أن التطبيق تعطل
+app.listen(PORT, () => {
+  console.log(`🚀 Server listening on port ${PORT}`);
+  
+  // الآن ابدأ الاتصال بقاعدة البيانات في الخلفية
+  connectDB();
+});
+
+async function connectDB() {
+  try {
+    await client.connect();
+    db = client.db("bookSystem");
+    console.log("✅ MongoDB Connected");
+  } catch (err) {
+    console.error("❌ MongoDB Connection Error:", err);
+    // لا تغلق السيرفر هنا، فقط اطبع الخطأ
+  }
+}
 const express = require("express");
 const { MongoClient } = require("mongodb");
 const crypto = require("crypto");
