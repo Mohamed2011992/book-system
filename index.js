@@ -93,7 +93,7 @@ app.get("/download", async (req, res) => {
             return res.status(403).send("❌ Link invalid or already used.");
         }
 
-const fileUrl = "https://drive.google.com/uc?export=download&confirm=t&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
+const fileUrl = "https://www.dropbox.com/scl/fi/r9e5d8u8rlc5kgi5sosh9/1.pdf?rlkey=l9oqcqhfpcerv2ymikizkzi7m&dl=1";
         
         res.setHeader("Referrer-Policy", "no-referrer");
         return res.redirect(fileUrl);
