@@ -78,20 +78,25 @@ app.get("/download", async (req, res) => {
             return res.status(400).send("❌ Token missing");
         }
 
-        const result = await db.collection("links").findOneAndUpdate(
-            { token: token, used: false },
-            { $set: { used: true } },
-            { returnDocument: "after" }
-        );
+        const link = await db.collection("links").findOne({
+            token: token,
+            used: false
+        });
 
-        if (!result.value) {
+        if (!link) {
             return res.status(403).send("❌ Link invalid or already used.");
         }
 
-        // 🔥 تحويل مباشر للتحميل
         const fileUrl = "https://raw.githubusercontent.com/Mohamed2011992/book-system/main/book.pdf";
 
+        // 👇 نعمل redirect الأول
         res.redirect(fileUrl);
+
+        // 👇 وبعدها نحرق اللينك
+        await db.collection("links").updateOne(
+            { token: token },
+            { $set: { used: true } }
+        );
 
     } catch (err) {
         console.error(err);
