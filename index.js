@@ -1,7 +1,6 @@
 const express = require("express");
 const { MongoClient } = require("mongodb");
 const crypto = require("crypto");
-const https = require("https");
 
 const app = express();
 app.use(express.json());
@@ -16,7 +15,6 @@ if (MONGO_URI) {
     client = new MongoClient(MONGO_URI);
 }
 
-// الاتصال بقاعدة البيانات
 async function connectDB() {
     try {
         if (!client) {
@@ -31,18 +29,15 @@ async function connectDB() {
     }
 }
 
-// تشغيل السيرفر
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     connectDB();
 });
 
-// الصفحة الرئيسية
 app.get("/", (req, res) => {
     res.send("Server is running 🚀");
 });
 
-// إنشاء لينك
 app.get("/generate", async (req, res) => {
     try {
         if (!db) return res.status(500).send("Database not ready");
@@ -68,7 +63,6 @@ app.get("/generate", async (req, res) => {
     }
 });
 
-// تحميل الكتاب (مرة واحدة فقط - Streaming حقيقي)
 app.get("/download", async (req, res) => {
     try {
         if (!db) return res.status(500).send("Database not ready");
@@ -89,21 +83,9 @@ app.get("/download", async (req, res) => {
             return res.status(403).send("❌ Link invalid or already used.");
         }
 
-        // 🔥 لينك Google Drive المباشر
-        const fileUrl = "https://drive.google.com/uc?export=download&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
+        const fileUrl = "https://dl.dropboxusercontent.com/scl/fi/r9e5d8u8rlc5kgi5sosh9/1.pdf?rlkey=l9oqcqhfpcerv2ymikizkzi7m";
 
-        https.get(fileUrl, (fileRes) => {
-
-            // إجبار التحميل
-            res.setHeader("Content-Disposition", "attachment; filename=book.pdf");
-            res.setHeader("Content-Type", "application/pdf");
-
-            fileRes.pipe(res);
-
-        }).on("error", (err) => {
-            console.error(err);
-            res.status(500).send("Download error ❌");
-        });
+        return res.redirect(fileUrl);
 
     } catch (err) {
         console.error(err);
