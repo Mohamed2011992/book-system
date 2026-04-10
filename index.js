@@ -1,6 +1,7 @@
 const express = require("express");
 const { MongoClient } = require("mongodb");
 const crypto = require("crypto");
+const path = require("path");
 
 const app = express();
 app.use(express.json());
@@ -15,6 +16,7 @@ if (MONGO_URI) {
     client = new MongoClient(MONGO_URI);
 }
 
+// الاتصال بقاعدة البيانات
 async function connectDB() {
     try {
         if (!client) {
@@ -29,15 +31,18 @@ async function connectDB() {
     }
 }
 
+// تشغيل السيرفر
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     connectDB();
 });
 
+// الصفحة الرئيسية
 app.get("/", (req, res) => {
     res.send("Server is running 🚀");
 });
 
+// إنشاء لينك
 app.get("/generate", async (req, res) => {
     try {
         if (!db) return res.status(500).send("Database not ready");
@@ -63,6 +68,7 @@ app.get("/generate", async (req, res) => {
     }
 });
 
+// تحميل الكتاب (مرة واحدة فقط)
 app.get("/download", async (req, res) => {
     try {
         if (!db) return res.status(500).send("Database not ready");
@@ -83,9 +89,10 @@ app.get("/download", async (req, res) => {
             return res.status(403).send("❌ Link invalid or already used.");
         }
 
-        const fileUrl = "https://dl.dropboxusercontent.com/scl/fi/r9e5d8u8rlc5kgi5sosh9/1.pdf?rlkey=l9oqcqhfpcerv2ymikizkzi7m";
+        // 🔥 تحميل مباشر من السيرفر
+        const filePath = path.join(__dirname, "files", "book.pdf");
 
-        return res.redirect(fileUrl);
+        res.download(filePath, "book.pdf");
 
     } catch (err) {
         console.error(err);
