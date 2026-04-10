@@ -1,7 +1,6 @@
 const express = require("express");
 const { MongoClient } = require("mongodb");
 const crypto = require("crypto");
-const axios = require("axios");
 
 const app = express();
 app.use(express.json());
@@ -42,10 +41,7 @@ app.get("/", (req, res) => {
     res.send("Server is running 🚀");
 });
 
-
-// =========================
 // إنشاء لينك
-// =========================
 app.get("/generate", async (req, res) => {
     try {
         if (!db) return res.status(500).send("Database not ready");
@@ -71,10 +67,7 @@ app.get("/generate", async (req, res) => {
     }
 });
 
-
-// =========================
-// تحميل الكتاب (مرة واحدة فقط)
-// =========================
+// تحميل الكتاب
 app.get("/download", async (req, res) => {
     try {
         if (!db) return res.status(500).send("Database not ready");
@@ -85,7 +78,6 @@ app.get("/download", async (req, res) => {
             return res.status(400).send("❌ Token missing");
         }
 
-        // التحقق من التوكن
         const link = await db.collection("links").findOne({
             token,
             used: false
@@ -97,35 +89,14 @@ app.get("/download", async (req, res) => {
 
         const fileUrl = "https://raw.githubusercontent.com/Mohamed2011992/book-system/main/book.pdf";
 
-        // تحميل الملف كسِتريم
-        const response = await axios.get(fileUrl, {
-            responseType: "stream"
-        });
+        // redirect مباشر
+        res.redirect(fileUrl);
 
-        // تجهيز headers للتحميل
-        res.setHeader("Content-Disposition", "attachment; filename=book.pdf");
-        res.setHeader("Content-Type", "application/pdf");
-
-        // أول ما يبدأ التحميل نبدأ نبعته للعميل
-        response.data.pipe(res);
-
-        // 🔥 نحرق التوكن بعد بدء الإرسال الفعلي
-        response.data.on("end", async () => {
-            try {
-                await db.collection("links").updateOne(
-                    { token },
-                    { $set: { used: true } }
-                );
-                console.log("🔒 Token used and burned:", token);
-            } catch (err) {
-                console.error("❌ Error burning token:", err);
-            }
-        });
-
-        // لو حصل خطأ في التحميل
-        response.data.on("error", (err) => {
-            console.error("❌ Stream error:", err);
-        });
+        // حرق التوكن
+        await db.collection("links").updateOne(
+            { token },
+            { $set: { used: true } }
+        );
 
     } catch (err) {
         console.error(err);
