@@ -1,6 +1,7 @@
 const express = require("express");
 const { MongoClient } = require("mongodb");
 const crypto = require("crypto");
+const https = require("https");
 
 const app = express();
 app.use(express.json());
@@ -67,7 +68,7 @@ app.get("/generate", async (req, res) => {
     }
 });
 
-// تحميل الكتاب (مرة واحدة فقط)
+// تحميل الكتاب (مرة واحدة فقط + تحميل إجباري)
 app.get("/download", async (req, res) => {
     try {
         if (!db) return res.status(500).send("Database not ready");
@@ -88,13 +89,19 @@ app.get("/download", async (req, res) => {
             return res.status(403).send("❌ Link invalid or already used.");
         }
 
-        // 🔥 لينك التحميل المباشر
+        // 🔥 لينك Dropbox
         const fileUrl = "https://www.dropbox.com/scl/fi/r9e5d8u8rlc5kgi5sosh9/1.pdf?rlkey=l9oqcqhfpcerv2ymikizkzi7m&raw=1";
 
-        // إجبار التحميل
-        res.setHeader("Content-Disposition", "attachment");
+        // 🔥 إجبار التحميل الحقيقي
+        https.get(fileUrl, (fileRes) => {
+            res.setHeader("Content-Disposition", "attachment; filename=book.pdf");
+            res.setHeader("Content-Type", "application/pdf");
 
-        return res.redirect(fileUrl);
+            fileRes.pipe(res);
+        }).on("error", (err) => {
+            console.error("Download error:", err);
+            res.status(500).send("Error downloading file ❌");
+        });
 
     } catch (err) {
         console.error(err);
