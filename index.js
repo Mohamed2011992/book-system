@@ -1,7 +1,6 @@
 const express = require("express");
 const { MongoClient } = require("mongodb");
 const crypto = require("crypto");
-const path = require("path");
 
 const app = express();
 app.use(express.json());
@@ -89,10 +88,10 @@ app.get("/download", async (req, res) => {
             return res.status(403).send("❌ Link invalid or already used.");
         }
 
-        // 🔥 تحميل مباشر من السيرفر
-        const filePath = path.join(__dirname, "files", "book.pdf");
+        // 🔥 تحويل مباشر للتحميل
+        const fileUrl = "https://raw.githubusercontent.com/Mohamed2011992/book-system/main/book.pdf";
 
-        res.download(filePath, "book.pdf");
+        res.redirect(fileUrl);
 
     } catch (err) {
         console.error(err);
