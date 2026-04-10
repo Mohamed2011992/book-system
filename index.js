@@ -1,6 +1,7 @@
 const express = require("express");
 const { MongoClient } = require("mongodb");
 const crypto = require("crypto");
+const https = require("https");
 
 const app = express();
 app.use(express.json());
@@ -67,7 +68,7 @@ app.get("/generate", async (req, res) => {
     }
 });
 
-// تحميل الكتاب (مرة واحدة فقط)
+// تحميل الكتاب (مرة واحدة فقط - Streaming حقيقي)
 app.get("/download", async (req, res) => {
     try {
         if (!db) return res.status(500).send("Database not ready");
@@ -91,7 +92,18 @@ app.get("/download", async (req, res) => {
         // 🔥 لينك Google Drive المباشر
         const fileUrl = "https://drive.google.com/uc?export=download&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
 
-        return res.redirect(fileUrl);
+        https.get(fileUrl, (fileRes) => {
+
+            // إجبار التحميل
+            res.setHeader("Content-Disposition", "attachment; filename=book.pdf");
+            res.setHeader("Content-Type", "application/pdf");
+
+            fileRes.pipe(res);
+
+        }).on("error", (err) => {
+            console.error(err);
+            res.status(500).send("Download error ❌");
+        });
 
     } catch (err) {
         console.error(err);
