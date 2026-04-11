@@ -1,6 +1,7 @@
 const express = require("express");
 const { MongoClient } = require("mongodb");
 const crypto = require("crypto");
+const axios = require("axios");
 
 const app = express();
 app.use(express.json());
@@ -67,7 +68,7 @@ app.get("/generate", async (req, res) => {
     }
 });
 
-// تحميل الكتاب
+// تحميل الكتاب (صح 100%)
 app.get("/download", async (req, res) => {
     try {
         if (!db) return res.status(500).send("Database not ready");
@@ -87,19 +88,38 @@ app.get("/download", async (req, res) => {
             return res.status(403).send("❌ Link invalid or already used.");
         }
 
-        const fileUrl = "https://raw.githubusercontent.com/Mohamed2011992/book-system/main/book.pdf";
+        // 🔥 لينك Google Drive المباشر
+        const fileUrl = "https://drive.google.com/uc?export=download&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
 
-        // redirect مباشر
-        res.redirect(fileUrl);
+        // نجيب الملف كـ stream
+        const response = await axios({
+            method: "GET",
+            url: fileUrl,
+            responseType: "stream"
+        });
 
-        // حرق التوكن
-        await db.collection("links").updateOne(
-            { token },
-            { $set: { used: true } }
-        );
+        // headers للتحميل
+        res.setHeader("Content-Disposition", "attachment; filename=book.pdf");
+        res.setHeader("Content-Type", "application/pdf");
+
+        // نبدأ الإرسال
+        response.data.pipe(res);
+
+        // 🔥 نحرق التوكن بعد ما التحميل يبدأ فعليًا
+        res.on("finish", async () => {
+            try {
+                await db.collection("links").updateOne(
+                    { token },
+                    { $set: { used: true } }
+                );
+                console.log("🔒 Token burned after download");
+            } catch (err) {
+                console.error(err);
+            }
+        });
 
     } catch (err) {
         console.error(err);
-        res.status(500).send("Internal Server Error ❌");
+        res.status(500).send("Download failed ❌");
     }
 });
