@@ -15,7 +15,6 @@ if (MONGO_URI) {
     client = new MongoClient(MONGO_URI);
 }
 
-// الاتصال بقاعدة البيانات
 async function connectDB() {
     try {
         if (!client) {
@@ -30,16 +29,15 @@ async function connectDB() {
     }
 }
 
-// تشغيل السيرفر
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     connectDB();
 });
 
-// الصفحة الرئيسية
 app.get("/", (req, res) => {
     res.send("Server is running 🚀");
 });
+
 
 // =========================
 // إنشاء لينك
@@ -53,6 +51,7 @@ app.get("/generate", async (req, res) => {
         await db.collection("links").insertOne({
             token,
             used: false,
+            ip: null,
             createdAt: new Date()
         });
 
@@ -69,6 +68,7 @@ app.get("/generate", async (req, res) => {
     }
 });
 
+
 // =========================
 // تحميل الكتاب
 // =========================
@@ -77,38 +77,52 @@ app.get("/download", async (req, res) => {
         if (!db) return res.status(500).send("Database not ready");
 
         const { token } = req.query;
+        const userIP = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
 
         if (!token) {
             return res.status(400).send("❌ Token missing");
         }
 
-        const link = await db.collection("links").findOne({
-            token,
-            used: false
-        });
+        const link = await db.collection("links").findOne({ token });
 
         if (!link) {
-            return res.status(403).send("❌ Link invalid or already used.");
+            return res.status(403).send("❌ Invalid link");
         }
 
-        // 🔥 لينك Google Drive مباشر
+        // 🔒 لو مستخدم قبل كده
+        if (link.used) {
+            return res.status(403).send("❌ Link already used");
+        }
+
+        // 🔥 ربط أول IP
+        if (!link.ip) {
+            await db.collection("links").updateOne(
+                { token },
+                { $set: { ip: userIP } }
+            );
+        } else {
+            // ❌ لو IP مختلف
+            if (link.ip !== userIP) {
+                return res.status(403).send("❌ This link is not for you");
+            }
+        }
+
         const fileUrl = "https://drive.google.com/uc?export=download&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
 
-        // 👇 redirect للتحميل
         res.redirect(fileUrl);
 
-        // 🔒 نحرق التوكن بعد انتهاء الرد
-        res.on("finish", async () => {
+        // 🔥 حرق بعد 20 ثانية
+        setTimeout(async () => {
             try {
                 await db.collection("links").updateOne(
                     { token },
                     { $set: { used: true } }
                 );
-                console.log("🔒 Token burned safely:", token);
+                console.log("🔒 Token burned after delay:", token);
             } catch (err) {
-                console.error("❌ Burn error:", err);
+                console.error(err);
             }
-        });
+        }, 20000);
 
     } catch (err) {
         console.error(err);
