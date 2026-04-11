@@ -1,7 +1,6 @@
 const express = require("express");
 const { MongoClient } = require("mongodb");
 const crypto = require("crypto");
-const axios = require("axios");
 
 const app = express();
 app.use(express.json());
@@ -42,7 +41,9 @@ app.get("/", (req, res) => {
     res.send("Server is running 🚀");
 });
 
+// =========================
 // إنشاء لينك
+// =========================
 app.get("/generate", async (req, res) => {
     try {
         if (!db) return res.status(500).send("Database not ready");
@@ -68,7 +69,9 @@ app.get("/generate", async (req, res) => {
     }
 });
 
-// تحميل الكتاب (صح 100%)
+// =========================
+// تحميل الكتاب
+// =========================
 app.get("/download", async (req, res) => {
     try {
         if (!db) return res.status(500).send("Database not ready");
@@ -88,38 +91,27 @@ app.get("/download", async (req, res) => {
             return res.status(403).send("❌ Link invalid or already used.");
         }
 
-        // 🔥 لينك Google Drive المباشر
+        // 🔥 لينك Google Drive مباشر
         const fileUrl = "https://drive.google.com/uc?export=download&id=1HJ4chKohiI57LwP7OipVDYWwnFRLhyYY";
 
-        // نجيب الملف كـ stream
-        const response = await axios({
-            method: "GET",
-            url: fileUrl,
-            responseType: "stream"
-        });
+        // 👇 redirect للتحميل
+        res.redirect(fileUrl);
 
-        // headers للتحميل
-        res.setHeader("Content-Disposition", "attachment; filename=book.pdf");
-        res.setHeader("Content-Type", "application/pdf");
-
-        // نبدأ الإرسال
-        response.data.pipe(res);
-
-        // 🔥 نحرق التوكن بعد ما التحميل يبدأ فعليًا
+        // 🔒 نحرق التوكن بعد انتهاء الرد
         res.on("finish", async () => {
             try {
                 await db.collection("links").updateOne(
                     { token },
                     { $set: { used: true } }
                 );
-                console.log("🔒 Token burned after download");
+                console.log("🔒 Token burned safely:", token);
             } catch (err) {
-                console.error(err);
+                console.error("❌ Burn error:", err);
             }
         });
 
     } catch (err) {
         console.error(err);
-        res.status(500).send("Download failed ❌");
+        res.status(500).send("Internal Server Error ❌");
     }
 });
